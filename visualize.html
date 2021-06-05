@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script>
+			function sleep(milliseconds) {
+			  var start = new Date().getTime();
+			  for (var i = 0; i < 1e7; i++) {
+				if ((new Date().getTime() - start) > milliseconds){
+				  break;
+				}
+			  }
+			}
+			// Standard Normal variate using Box-Muller transform.
+			function randn_bm() {
+				var u = 0, v = 0;
+				while(u === 0) u = Math.random(); //Converting [0,1) to (0,1)
+				while(v === 0) v = Math.random();
+				return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+			}
+			/*function multiplyMatrices(m1, m2) {
+				var result = [];
+				for (var i = 0; i < m1.length; i++) {
+					result[i] = [];
+					for (var j = 0; j < m2[0].length; j++) {
+						var sum = 0;
+						for (var k = 0; k < m1[0].length; k++) {
+							sum += m1[i][k] * m2[k][j];
+						}
+						result[i][j] = sum;
+					}
+				}
+				return result;
+			}*/
+			function multiplyMatrixVector(mat, vec) {
+				var result = new Array(mat.length);
+				for (var i = 0; i < mat.length; i++) {
+					var sum=0
+					for (var j = 0; j < vec.length; j++) {
+						sum+=mat[i][j] * vec[j]
+					}
+					result[i]=sum
+				}
+				return result;
+			}
+			function subtractMatrices(mat1, mat2) {
+				var result=new Array(mat1.length)
+				for (var i = 0; i < mat1.length; i++) {
+					result[i]=new Array(mat1[0])
+					for (var j = 0; j < mat1[0].length; j++) {
+						result[i][j]=mat1[i][j] - mat2[i][j]
+					}
+				}
+				return result
+			}
+			function vectorAddition(vec1, vec2) {
+				var result=new Array(vec1.length)
+				for(var i=0; i<vec1.length; i++) {
+					result[i]=vec1[i]+vec2[i]
+				}
+				return result
+			}
+			function vectorSubtraction(vec1, vec2) {
+				var result=new Array(vec1.length)
+				for(var i=0; i<vec1.length; i++) {
+					result[i]=vec1[i]-vec2[i]
+				}
+				return result
+			}
+			function hadamardProduct(vec1, vec2) {
+				var result=new Array(vec1.length)
+				for(var i=0; i<vec1.length; i++) {
+					result[i]=vec1[i]*vec2[i]
+				}
+				//console.log(result)
+				return result
+			}
+			function transposeMatrix(mat) {
+				return mat[0].map((_, colIndex) => this.matrix.map(row => row[colIndex]))
+			}
+		
+			function relu(x) { //vector x
+				result=new Array(x.length)
+				for(var i=0; i<x.length; i++) {
+					result[i]=Math.max(x[i], 0)
+				}
+				return result
+			}
+			function reluDerivative(x) { //vector x
+				result=new Array(x.length)
+				for(var i=0; i<x.length; i++) {
+					if(x[i]>=0)
+						result[i]=1;
+					else
+						result[i]=0;
+				}
+				//console.log(result)
+				return result
+			}
+			
+		
+			class NeuralNetwork {
+				constructor() {
+					this.layers=[]
+				}
+				initializeCanvases() {
+					this.ctx=document.getElementById("myCanvas").getContext("2d")
+					for(var i=0; i<this.layers.length; i++) {
+						this.layers[i].initializeCanvas()
+					}
+				}
+				
+				forward(input) {
+					var e=input.slice()
+					for(var i=0; i<this.layers.length; i++) {
+						e=this.layers[i].forward(e)
+					}
+					return e
+				}
+				backward(errorVector) {
+					var e=errorVector.slice()
+					for(var i=this.layers.length-2; i>=0; i--) { //skip softmax layer (-2)
+						e=this.layers[i].backward(e)
+					}
+					return e
+				}
+				updateParameterGradient(errorVector) {
+					var e=errorVector.slice()
+					for(var i=this.layers.length-2; i>=0; i--) { //skip softmax layer (-2)
+						this.layers[i].updateParameterGradient(e)
+						e = this.layers[i].backward(e)
+					}
+				}
+				parameterUpdate(learning_rate=0.1) {
+					for(var i=0; i<this.layers.length-1; i++) { //skip softmax
+						this.layers[i].parameterUpdate(learning_rate)
+					}
+				}
+				drawIndividualOutputs(dataset) {
+					var dataset_x=dataset.map(function(value,index) { return value[0] })
+					var e=dataset_x
+					for(var i=0; i<this.layers.length; i++) {
+						e = this.layers[i].drawOutput(e)
+					}
+				}
+				drawOutputs() {
+					drawOutput(this.ctx, this)
+				}
+			}
+			class Layer { //to inherit from
+				constructor() {}
+				initializeCanvas() {
+					var canvas = document.createElement('canvas')
+					canvas.width  = 500
+					canvas.height = 500
+					document.body.appendChild(canvas)
+					this.ctx=canvas.getContext("2d")
+				}
+				
+				drawOutput(inputs) {
+					var outputs=new Array(inputs.length)
+					for(var i=0; i<inputs.length; i++) {
+						outputs[i]=this.forward(inputs[i])
+					}
+					this.ctx.clearRect(0, 0, 500, 500)
+					drawZippedPoints(this.ctx, outputs.slice(0,100), color="orange")
+					drawZippedPoints(this.ctx, outputs.slice(100), color="green")
+					return outputs
+				}
+			}
+			class LinearLayer extends Layer {
+				constructor(inputDim, outputDim, scale=1) {
+					super()
+					this.inputDim=inputDim
+					this.outputDim=outputDim
+					this.initializeWeights(scale=scale)
+					this.intializeGradient()
+				}
+				initializeWeights(scale=1) {
+					this.matrix=new Array(this.outputDim) 
+					for(var i=0; i<this.outputDim; i++) {
+						var random_row = new Array(this.inputDim)
+						for(var j=0; j<this.inputDim; j++)
+							random_row[j]=randn_bm()*scale;
+						this.matrix[i]=random_row
+					}
+					this.matrixTranspose=this.matrix[0].map((_, colIndex) => this.matrix.map(row => row[colIndex]))
+				}
+				intializeGradient() {
+					this.gradient=new Array(this.outputDim) //!! never tested for nonsquare layers !!
+					for(var i=0; i<this.outputDim; i++) {
+						var zeros = new Array(this.inputDim)	//or is it collumn?????
+						for(var j=0; j<this.inputDim; j++)
+							zeros[j]=0;
+						this.gradient[i]=zeros
+					}
+					this.gradientCount=0
+				}
+				
+				
+				forward(input) {
+					this.input=input
+					return multiplyMatrixVector(this.matrix, input)
+				}
+				backward(errorVector) {
+					return multiplyMatrixVector(this.matrixTranspose, errorVector)
+				}
+				updateParameterGradient(errorVector){
+					for(var i=0; i<this.outputDim; i++) {
+						for(var j=0; j<this.inputDim; j++) {
+							this.gradient[i][j]+=this.input[j]*errorVector[i] //stimmt des jetzt eigentlich????
+						}
+					}
+					this.gradientCount++
+				}
+				parameterUpdate(learning_rate) {
+					var scaledAverageGradient=this.gradient.map(x => x.map(y => y * learning_rate / this.gradientCount)) //sieht komisch aus, ist aber richtig
+					this.matrix=subtractMatrices(this.matrix, scaledAverageGradient)
+					
+					this.intializeGradient()
+				}
+			}
+			class BiasLayer extends Layer {
+				constructor(inputDim, outputDim, scale=1) {
+					super()
+					this.inputDim=inputDim
+					this.outputDim=outputDim
+					this.initializeWeights()
+					this.intializeGradient()
+				}
+				initializeWeights() {
+					this.bias=new Array(this.outputDim) 
+					for(var i=0; i<this.outputDim; i++) {
+						this.bias[i]=0
+					}
+				}
+				intializeGradient() {
+					this.gradient=new Array(this.outputDim) 
+					for(var i=0; i<this.outputDim; i++) {
+						this.gradient[i]=0
+					}
+					this.gradientCount=0
+				}
+				
+				forward(input) {
+					this.input=input
+					return vectorAddition(input, this.bias)
+				}
+				backward(errorVector) {
+					return errorVector.slice()
+				}
+				
+				updateParameterGradient(errorVector){			
+					for(var i=0; i<this.outputDim; i++) {
+						this.gradient[i]+=errorVector[i] //stimmt des jetzt eigentlich????
+					}
+					this.gradientCount++
+				}
+				parameterUpdate(learning_rate) {
+					var scaledAverageGradient=this.gradient.map(x => x / this.gradientCount) //sieht komisch aus, ist aber richtig
+					this.bias=vectorSubtraction(this.bias, scaledAverageGradient)
+					
+					this.intializeGradient()
+				}
+			}
+			class AffineLayer extends Layer {
+				constructor(inputDim, outputDim, scale=1) {
+					super()
+					this.inputDim=inputDim
+					this.outputDim=outputDim
+
+					this.biasLayer=new BiasLayer(inputDim, outputDim, scale=scale)
+					this.linearLayer=new LinearLayer(inputDim, outputDim, scale=scale)
+				}
+
+				forward(input) {
+					this.input=input
+					return this.linearLayer.forward(this.biasLayer.forward(input))
+				}
+				backward(errorVector) {
+					return this.linearLayer.backward(errorVector)
+				}
+				updateParameterGradient(errorVector){
+					this.linearLayer.updateParameterGradient(errorVector)
+					var e=this.linearLayer.backward(errorVector)
+					this.biasLayer.updateParameterGradient(e)
+				}
+				parameterUpdate(learning_rate) {
+					this.biasLayer.parameterUpdate(learning_rate)
+					this.linearLayer.parameterUpdate(learning_rate)
+				}
+			}
+			class FeedForwardLayer extends Layer  {
+				constructor(inputDim, outputDim, activation_function, activation_function_derivative, scale=1) {
+					super()
+					this.inputDim=inputDim
+					this.outputDim=outputDim
+					
+					this.activation_function=activation_function
+					this.activation_function_derivative=activation_function_derivative
+					
+					this.affineLayer=new AffineLayer(inputDim, outputDim, scale=scale)
+				}
+
+				forward(input) {
+					this.input=input
+					this.affineOutput=this.affineLayer.forward(input)
+					return this.activation_function(this.affineOutput)
+				}
+				backward(errorVector) {
+					var e=hadamardProduct(this.activation_function_derivative(this.affineOutput),errorVector)
+					return this.affineLayer.backward(e)
+				}
+				updateParameterGradient(errorVector){
+					var e=hadamardProduct(this.activation_function_derivative(this.affineOutput),errorVector)
+					this.affineLayer.updateParameterGradient(e)
+				}
+				parameterUpdate(learning_rate) {
+					this.affineLayer.parameterUpdate(learning_rate)
+				}
+			}
+			
+			
+			class SoftmaxLayer extends Layer  { 
+				constructor() {
+					super()
+				}
+				forward(input) {
+					var result=new Array(input.length)
+					var total=0
+					for(var i=0; i<input.length; i++) {
+						var exp=Math.exp(input[i])
+						result[i]=exp
+						total+=exp
+					}
+					
+					return result.map(x => x/total)
+				}
+				backward(input) { //actual gradient is computed together with the losslayer, so just identity here
+					return input.slice()
+				}
+			}
+			
+			class Loss {
+				constructor() {}
+				forward(pred, tru) {
+					var loss=0
+					for(var i=0; i<pred.length; i++) {
+						loss -= Math.log(pred[i]) * tru[i]
+					}
+					return loss
+				}
+				backward(pred, tru) { //RETURNS GRADIENT OF SOFTMAX + LOSS; pred and true are two single vectors
+					var result=new Array(pred.length)
+					for(var i=0; i<pred.length; i++) {
+						result[i]=pred[i]-tru[i]
+					}
+					return result
+				}
+			}
+			
+			function gradientDescent(neuralNet, dataset, lossFunction, num_steps=1, learning_rate=0.01, batch_size=null) {
+				
+				var i=0
+				const interval = setInterval(function() {
+					if(i>=num_steps)
+						clearInterval(interval);
+					i++
+			
+					//get training batch
+					var batch
+					if (batch_size == null)
+						batch=dataset;
+					else {
+						batch=new Array(batch_size)
+						for(var j=0; j<batch_size; j++) {
+							batch[j]=dataset[Math.floor(Math.random() * dataset.length)]
+						}
+					}
+					
+					//get loss and gradient
+					var epochLoss=0
+					for(var j=0; j<batch.length; j++) {
+						[x,y] = batch[j]
+						var yPred=neuralNet.forward(x)
+						
+						var loss=lossFunction.forward(yPred, y)
+						epochLoss+=loss
+						
+						var errorVector=lossFunction.backward(yPred, y)
+						neuralNet.updateParameterGradient(errorVector)
+					}
+					
+					//update weigths
+					neuralNet.parameterUpdate(learning_rate)
+					neuralNet.drawIndividualOutputs(dataset)
+					neuralNet.drawOutputs()
+					//sleep(50)
+					
+					epochLoss /= batch.length
+					
+					if(i%50==49) { //there should be a better way to do this
+						var lossOnDataset=0
+						for(var j=0; j<dataset.length; j++) {
+							[x,y] = dataset[j]
+							yPred=neuralNet.forward(x)	
+							loss=lossFunction.forward(yPred, y)
+							lossOnDataset+=loss
+						}
+						lossOnDataset/=dataset.length
+						console.log("Epoch", i, lossOnDataset)
+					}
+				}, 1)
+			}
+		
+		
+			black_x=[]
+			black_y=[]
+			for(var i=0; i<100; i++) {
+				black_x.push(randn_bm()+2.5)
+				black_y.push(randn_bm()+2.5)
+			}
+			
+			white_x=[]
+			white_y=[]
+			for(var i=0; i<100; i++) {
+				white_x.push(randn_bm()-2.5)
+				white_y.push(randn_bm()-2.5)
+			}
+		
+			dataset=[]
+			for(var i=0; i<black_x.length; i++) {
+				data_x=[black_x[i], black_y[i]]
+				data_y=[1,0]
+				dataset.push([data_x, data_y])
+			}
+			for(var i=0; i<white_x.length; i++) {
+				data_x=[white_x[i], white_y[i]]
+				data_y=[0,1]
+				dataset.push([data_x, data_y])
+			}
+			//console.log(dataset)
+			
+			
+			
+			
+			
+			var canvasWidth
+			var canvasHeight
+			
+			function drawDataset(ctx) {
+				drawPoints(ctx, black_x, black_y, color="orange")
+				drawPoints(ctx, white_x, white_y, color="green")
+			}
+			
+			window.onload = function() {
+				var canvas = document.getElementById("myCanvas")
+				var ctx = canvas.getContext("2d")
+				canvasWidth = canvas.width
+				canvasHeight = canvas.height
+				drawPoints(ctx, black_x, black_y)
+				drawPoints(ctx, white_x, white_y, color="green")
+				
+				
+				var myNeuralNet=new NeuralNetwork()
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative))
+				myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.1))
+				//myNeuralNet.layers.push(new AffineLayer(2,2, scale=0.5))
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				myNeuralNet.layers.push(new LinearLayer(2,2, scale=0.2))
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				myNeuralNet.layers.push(new SoftmaxLayer())
+				
+				myNeuralNet.initializeCanvases()
+				gradientDescent(myNeuralNet, dataset, new Loss(), num_steps=1200000, learning_rate=0.03, batch_size=50)
+				
+			}
+			
+			
+			function drawOutput(ctx, neuralNet, min_x=-5, max_x=5, min_y=-5, max_y=5, fineness=1) {
+				ctx.clearRect(0, 0, 500, 500)
+				drawDataset(ctx)
+				
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				
+				var increment
+				var opacity
+				if(fineness==1) {
+					increment=0.1
+					opacity=0.3
+					limit=0.05
+					size=5
+				}
+				else if(fineness==2) {
+					increment=0.02
+					opacity=0.2
+					limit=0.01
+					size=1
+				}
+				for(var x=min_x; x<=max_x; x+=increment) {
+					for(var y=min_y; y<=max_y; y+=increment) {
+						var output=neuralNet.forward([x,y])
+						if(output[0]>0.5-limit && output[0]<0.5+limit)
+							ctx.fillStyle = "rgba(0,0,0, 0.8)";
+						else
+							ctx.fillStyle = "rgba("+output[0]*255+","+output[1]*255+",0, "+String(opacity)+")";
+						ctx.fillRect((x-min_x)*scale_x,(y-min_y)*scale_y, size, size)
+					}
+				}
+			}
+			
+			function drawPoints(ctx, points_x, points_y, color="gray", min_x=-5, max_x=5, min_y=-5, max_y=5, size=5) {
+				ctx.fillStyle = color;
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				for(var i=0; i<points_x.length; i++) {
+					ctx.fillRect((points_x[i]-min_x)*scale_x,(points_y[i]-min_y)*scale_y,size,size)
+				}
+			}
+			function drawZippedPoints(ctx, points_xy, color="gray", min_x=-5, max_x=5, min_y=-5, max_y=5, size=5) {
+				ctx.fillStyle = color;
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				for(var i=0; i<points_xy.length; i++) {
+					[x,y]=points_xy[i]
+					ctx.fillRect((x-min_x)*scale_x,(y-min_y)*scale_y,size,size)
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<canvas id="myCanvas" width="500" height="500">
+		</canvas>
+	</body>
+</html>

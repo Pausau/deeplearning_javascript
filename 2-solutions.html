@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			canvas {
+				border: 1px solid black;
+			}
+		</style>
+		<script src="linalg.js"></script>
+		<script src="random.js"></script>
+		<script src="seedrandom.js"></script>
+		<script src="activationfunctions.js"></script>
+		<script src="layers.js"></script>
+		<script src="datasets.js"></script>
+		<script src="draw.js"></script>
+		<script>
+			//Math.seedrandom('any string you lie');
+			function getBestAffineModel(dataset, lossFunction=new Loss(), learning_rate=0.1) {
+				var affineModel=new NeuralNetwork()
+				affineModel.layers.push(new AffineLayer(2,1, scale=0.5))
+				affineModel.layers.push(new SoftmaxLayer())
+				
+				for(var i=0; i<10000; i++) {
+					for(var j=0; j<dataset.length; j++) {
+						[x,y] = dataset[j]
+						var yPred=affineModel.forward(x)
+						var loss=lossFunction.forward(yPred, y)
+						var errorVector=lossFunction.backward(yPred, y)
+						affineModel.updateParameterGradient(errorVector)
+					}
+					affineModel.parameterUpdate(learning_rate)
+				}
+				return affineModel
+			}
+			function E(dataset, lossFunction=new Loss()) {
+				var affineModel=getBestAffineModel(dataset)
+			
+				var epochLoss=0
+				for(var j=0; j<dataset.length; j++) {
+					[x,y] = dataset[j]
+					var yPred=affineModel.forward(x)
+					var loss=lossFunction.forward(yPred, y)
+					epochLoss+=loss
+				}
+				return epochLoss/dataset.length
+			}
+			function Q(dataset) {
+				return Math.exp(-E(dataset))
+			}
+			
+			function trainNeuralNetwork(neuralNet, dataset, lossFunction, num_steps=1, learning_rate=0.001, batch_size=null) {
+				for(var i=0; i<num_steps; i++) {
+					//get training batch
+					var batch
+					if (batch_size == null)
+						batch=dataset;
+					else {
+						batch=new Array(batch_size)
+						for(var j=0; j<batch_size; j++) {
+							batch[j]=dataset[Math.floor(Math.random() * dataset.length)]
+						}
+					}
+					
+					//get loss and gradient
+					for(var j=0; j<batch.length; j++) {
+						[x,y] = batch[j]
+						var yPred=neuralNet.forward(x)
+						var errorVector=lossFunction.backward(yPred, y)
+						neuralNet.updateParameterGradient(errorVector)
+					}
+					//update weigths
+					neuralNet.parameterUpdate(learning_rate) ///Math.sqrt(i)
+				}
+			}
+			
+			function trainLayerOptimalQ(layer, dataset, lossFunction, num_steps=1, learning_rate=0.001) {
+				var affineModel=getBestAffineModel(dataset)
+				
+				for(var i=0; i<num_steps; i++) {
+					
+					//get loss and gradient
+					for(var j=0; j<dataset.length; j++) {
+						[x,y] = dataset[j]
+						var F_of_X=layer.forward(x)
+						var yPred=affineModel.forward(F_of_X)
+						var errorVector=lossFunction.backward(yPred, y)
+						layer.updateParameterGradient(affineModel.backward(errorVector))
+					}
+					//update weigths
+					layer.parameterUpdate(learning_rate) ///Math.sqrt(i)
+					
+					//update the affine model so that it stays optimal
+					trainNeuralNetwork(affineModel, dataset, lossFunction, 100)
+				}
+			}
+		
+			var canvasWidth
+			var canvasHeight
+			window.onload = function() {
+				var canvas = document.getElementById("myCanvas")
+				var ctx = canvas.getContext("2d")
+				var canvas2 = document.getElementById("myCanvas2")
+				var ctx2 = canvas2.getContext("2d")
+				var canvas3 = document.getElementById("myCanvas3")
+				var ctx3 = canvas3.getContext("2d")
+				canvasWidth = canvas.width
+				canvasHeight = canvas.height
+				var print1=document.getElementById("print1")
+				var print2=document.getElementById("print2")
+				var print3=document.getElementById("print3")
+				
+				var dataset=getTinyRandomDataset()
+				
+				drawDataset(ctx, dataset)
+				Q_D=Q(dataset)
+				print1.innerHTML+="Q:"+Q_D+"<br />"
+				if(Q_D>0.97)
+					print1.innerHTML+="Hat eine 0-Lösung!";
+					
+				neuralNet1=new NeuralNetwork()
+				neuralNet1.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+				//PROPER INIT
+				var F_of_D=[]
+				for(var i=0; i<dataset.length; i++) {
+					[x,y] = dataset[i]
+					F_of_D.push([neuralNet1.layers[0].forward(x), y])
+				}
+				Q_F_of_D=Q(F_of_D)
+				while(Q_F_of_D<Q_D && Q_D<0.97) {
+					neuralNet1.layers.pop()
+					neuralNet1.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+					F_of_D=[]
+					for(var i=0; i<dataset.length; i++) {
+						[x,y] = dataset[i]
+						F_of_D.push([neuralNet1.layers[0].forward(x), y])
+					}
+					Q_F_of_D=Q(F_of_D)
+				}
+				//EMD PROPER INIT
+				neuralNet1.layers.push(new LinearLayer(2,1, scale=0.2))
+				neuralNet1.layers.push(new SoftmaxLayer())
+				trainNeuralNetwork(neuralNet1, dataset, new Loss(), 10000)
+				
+				neuralNet2=new NeuralNetwork()
+				neuralNet2.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+				//PROPER INIT
+				F_of_D=[]
+				for(var i=0; i<dataset.length; i++) {
+					[x,y] = dataset[i]
+					F_of_D.push([neuralNet2.layers[0].forward(x), y])
+				}
+				Q_F_of_D=Q(F_of_D)
+				while(Q_F_of_D<Q_D && Q_D<0.97) {
+					neuralNet2.layers.pop()
+					neuralNet2.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+					F_of_D=[]
+					for(var i=0; i<dataset.length; i++) {
+						[x,y] = dataset[i]
+						F_of_D.push([neuralNet2.layers[0].forward(x), y])
+					}
+					Q_F_of_D=Q(F_of_D)
+				}
+				//EMD PROPER INIT
+				trainLayerOptimalQ(neuralNet2.layers[0], dataset, new Loss(), 10000)
+				
+				
+				var F1_of_D=[]
+				for(var i=0; i<dataset.length; i++) {
+					[x,y] = dataset[i]
+					F1_of_D.push([neuralNet1.layers[0].forward(x), y])
+				}
+				
+				drawDataset(ctx2, F1_of_D)
+				Q_F1_of_D=Q(F1_of_D)
+				print2.innerHTML+="Q:"+Q_F1_of_D+"<br />"
+				if(Q_F1_of_D>0.97)
+					print2.innerHTML+="Hat eine 1-Lösung!";
+					
+					
+				var F2_of_D=[]
+				for(var i=0; i<dataset.length; i++) {
+					[x,y] = dataset[i]
+					F2_of_D.push([neuralNet2.layers[0].forward(x), y])
+				}
+				
+				drawDataset(ctx3, F2_of_D)
+				Q_F2_of_D=Q(F2_of_D)
+				print3.innerHTML+="Q:"+Q_F2_of_D+"<br />"
+				if(Q_F2_of_D>0.97)
+					print3.innerHTML+="Hat eine 1-Lösung!";
+			}		
+		</script>
+	</head>
+	<body>
+		<canvas id="myCanvas" width="300" height="300" style="display:inline">
+		</canvas>
+		<canvas id="myCanvas2" width="300" height="300" style="display:inline">
+		</canvas> 
+		<canvas id="myCanvas3" width="300" height="300">
+		</canvas> 
+		<br />
+		<p id="print1" style="display:inline-block; width:300px;"></p>
+		<p id="print2" style="display:inline-block; width:300px; vertical-align:top;"></p>
+		<p id="print3" style="display:inline-block; vertical-align:top;"></p>
+	</body>
+</html>

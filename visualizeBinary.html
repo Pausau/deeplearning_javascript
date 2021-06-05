@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			canvas {
+				border: 1px solid black;
+			}
+		</style>
+		<script src="linalg.js"></script>
+		<script src="random.js"></script>
+		<script src="activationfunctions.js"></script>
+		<script src="layers.js"></script>
+		<script src="datasets.js"></script>
+		<script>
+
+
+		
+
+			
+			
+			
+			function gradientDescent(neuralNet, dataset, lossFunction, num_steps=1, learning_rate=0.01, batch_size=null) {
+				
+				var i=0
+				const interval = setInterval(function() {
+					if(i>=num_steps)
+						clearInterval(interval);
+					i++
+			
+					//get training batch
+					var batch
+					if (batch_size == null)
+						batch=dataset;
+					else {
+						batch=new Array(batch_size)
+						for(var j=0; j<batch_size; j++) {
+							batch[j]=dataset[Math.floor(Math.random() * dataset.length)]
+						}
+					}
+					
+					//get loss and gradient
+					var epochLoss=0
+					for(var j=0; j<batch.length; j++) {
+						[x,y] = batch[j]
+						var yPred=neuralNet.forward(x)
+						
+						var loss=lossFunction.forward(yPred, y)
+						//console.log(loss)
+						epochLoss+=loss
+						
+						var errorVector=lossFunction.backward(yPred, y)
+						neuralNet.updateParameterGradient(errorVector)
+					}
+					
+					//update weigths
+					neuralNet.parameterUpdate(learning_rate)
+					neuralNet.drawIndividualOutputs(dataset)
+					neuralNet.drawOutputs(dataset)
+					//sleep(50)
+					
+					epochLoss /= batch.length
+					
+					if(i%50==49) { //there should be a better way to do this
+						var lossOnDataset=0
+						for(var j=0; j<dataset.length; j++) {
+							[x,y] = dataset[j]
+							yPred=neuralNet.forward(x)	
+							loss=lossFunction.forward(yPred, y)
+							lossOnDataset+=loss
+						}
+						lossOnDataset/=dataset.length
+						console.log("Epoch", i, lossOnDataset)
+					}
+				}, 1)
+			}
+		
+		
+
+			var canvasWidth
+			var canvasHeight
+			
+			
+			
+			window.onload = function() {
+				var canvas = document.getElementById("myCanvas")
+				var ctx = canvas.getContext("2d")
+				canvasWidth = canvas.width
+				canvasHeight = canvas.height
+				//drawPoints(ctx, black_x, black_y)
+				//drawPoints(ctx, white_x, white_y, color="green")
+				
+				
+				var dataset=getCircularDataset()
+				
+				var myNeuralNet=new NeuralNetwork()
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative))
+				myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+				//myNeuralNet.layers.push(new FeedForwardLayer(6,2, relu, reluDerivative, scale=0.4))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.4))
+				myNeuralNet.layers.push(new AffineLayer(2,1, scale=0.5))
+				//myNeuralNet.layers.push(new LinearLayer(2,1, scale=0.5))
+				//myNeuralNet.layers.push(new LinearLayer(2,1, scale=0.2))
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				myNeuralNet.layers.push(new SoftmaxLayer())
+				
+				myNeuralNet.initializeCanvases()
+				gradientDescent(myNeuralNet, dataset, new Loss(), num_steps=1200000, learning_rate=0.0003, batch_size=10)
+				
+			}
+			
+			
+			function drawOutput(ctx, dataset, neuralNet, min_x=-5, max_x=5, min_y=-5, max_y=5, fineness=1) {
+				ctx.clearRect(0, 0, 500, 500)
+				drawDataset(ctx, dataset)
+				
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				
+				var increment
+				var opacity
+				if(fineness==1) {
+					increment=0.1
+					opacity=0.3
+					limit=0.0 //0.05
+					size=5
+				}
+				else if(fineness==2) {
+					increment=0.02
+					opacity=0.2
+					limit=0.0 //0.01
+					size=1
+				}
+				for(var x=min_x; x<=max_x; x+=increment) {
+					for(var y=min_y; y<=max_y; y+=increment) {
+						var output=neuralNet.forward([x,y])
+						if(output>0.5-limit && output<0.5+limit)
+							ctx.fillStyle = "rgba(0,0,0, 0.8)";
+						else
+							ctx.fillStyle = "rgba("+(1-output)*255+","+output*255+",0, "+String(opacity)+")";
+						ctx.fillRect((x-min_x)*scale_x,(y-min_y)*scale_y, size, size)
+					}
+				}
+			}
+			
+			const colors = {0: "green", 1: "orange"}
+			function convertOneHotToNumber(onehot) {
+				if (typeof onehot === 'number') //if input already is a number, do nothing 
+					return onehot;
+				return onehot.findIndex(function(value) {return value>0})
+			}
+			function drawDataset(ctx, dataset, min_x=-5, max_x=5, min_y=-5, max_y=5, size=5) {
+				for(var i=0; i<dataset.length; i++) {
+					[x,y]=dataset[i]
+					ctx.fillStyle = colors[convertOneHotToNumber(y)]
+					ctx.fillRect((x[0]-min_x)*scale_x,(x[1]-min_y)*scale_y,size,size)
+				}
+			}
+			function drawPoints(ctx, points_x, points_y, color="gray", min_x=-5, max_x=5, min_y=-5, max_y=5, size=5) {
+				ctx.fillStyle = color
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				for(var i=0; i<points_x.length; i++) {
+					ctx.fillRect((points_x[i]-min_x)*scale_x,(points_y[i]-min_y)*scale_y,size,size)
+				}
+			}
+			function drawZippedPoints(ctx, points_xy, color="gray", min_x=-5, max_x=5, min_y=-5, max_y=5, size=5) {
+				ctx.fillStyle = color
+				
+				scale_x=canvasWidth/(max_x-min_x)
+				scale_y=canvasHeight/(max_y-min_y)
+				for(var i=0; i<points_xy.length; i++) {
+					[x,y]=points_xy[i]
+					ctx.fillRect((x-min_x)*scale_x,(y-min_y)*scale_y,size,size)
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<canvas id="myCanvas" width="300" height="300">
+		</canvas>
+	</body>
+</html>

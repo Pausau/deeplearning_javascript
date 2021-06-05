@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			canvas {
+				border: 1px solid black;
+			}
+		</style>
+		<script src="linalg.js"></script>
+		<script src="random.js"></script>
+		<script src="activationfunctions.js"></script>
+		<script src="layers.js"></script>
+		<script src="datasets.js"></script>
+		<script src="draw.js"></script>
+		<script>
+
+
+		
+
+			
+			
+			
+			function gradientDescent(neuralNet, dataset, lossFunction, num_steps=1, learning_rate=0.01, batch_size=null) {
+				
+				var i=0
+				const interval = setInterval(function() {
+					if(i>=num_steps)
+						clearInterval(interval);
+					i++
+			
+					//get training batch
+					var batch
+					if (batch_size == null)
+						batch=dataset;
+					else {
+						batch=new Array(batch_size)
+						for(var j=0; j<batch_size; j++) {
+							batch[j]=dataset[Math.floor(Math.random() * dataset.length)]
+						}
+					}
+					
+					//get loss and gradient
+					var epochLoss=0
+					for(var j=0; j<batch.length; j++) {
+						[x,y] = batch[j]
+						var yPred=neuralNet.forward(x)
+						
+						var loss=lossFunction.forward(yPred, y)
+						//console.log(loss)
+						epochLoss+=loss
+						
+						var errorVector=lossFunction.backward(yPred, y)
+						neuralNet.updateParameterGradient(errorVector)
+					}
+					
+					//update weigths
+					neuralNet.parameterUpdate(learning_rate) ///Math.sqrt(i)
+					neuralNet.drawIndividualOutputs(dataset)
+					neuralNet.drawOutputs(dataset)
+					//sleep(50)
+					
+					epochLoss /= batch.length
+					
+					if(i%50==49) { //there should be a better way to do this
+						var lossOnDataset=0
+						var representation=[]
+						for(var j=0; j<dataset.length; j++) {
+							[x,y] = dataset[j]
+							yPred=neuralNet.forward(x)	
+							loss=lossFunction.forward(yPred, y)
+							lossOnDataset+=loss
+							
+							representation.push([neuralNet.layers[0].forward(x), y])
+						}
+						lossOnDataset/=dataset.length
+						console.log("Epoch", i, lossOnDataset, yPred)
+						//console.log("Epoch", i, lossOnDataset, Q(representation))
+					}
+				}, 1)
+			}
+		
+		
+			function E(dataset) {
+				var learning_rate=0.1
+			
+				var linearModel=new NeuralNetwork()
+				linearModel.layers.push(new AffineLayer(2,1, scale=0.5))
+				linearModel.layers.push(new SoftmaxLayer())
+				var lossFunction=new Loss()
+				
+				for(var i=0; i<10000; i++) {
+					for(var j=0; j<dataset.length; j++) {
+						[x,y] = dataset[j]
+						var yPred=linearModel.forward(x)
+						var loss=lossFunction.forward(yPred, y)
+						var errorVector=lossFunction.backward(yPred, y)
+						linearModel.updateParameterGradient(errorVector)
+					}
+					linearModel.parameterUpdate(learning_rate/Math.sqrt(i+1))
+				}
+				var epochLoss=0
+				for(var j=0; j<dataset.length; j++) {
+					[x,y] = dataset[j]
+					var yPred=linearModel.forward(x)
+					var loss=lossFunction.forward(yPred, y)
+					epochLoss+=loss
+				}
+				return epochLoss/dataset.length
+			}
+			function Q(dataset) {
+				return Math.exp(-E(dataset))
+			}
+		
+			var canvasWidth
+			var canvasHeight
+			
+			
+			
+			window.onload = function() {
+				var canvas = document.getElementById("myCanvas")
+				var ctx = canvas.getContext("2d")
+				canvasWidth = canvas.width
+				canvasHeight = canvas.height
+				
+				//drawPoints(ctx, black_x, black_y)
+				//drawPoints(ctx, white_x, white_y, color="green")
+				
+				var dataset=getCrossDataset()
+				//var dataset=get4PartDataset()
+				//var dataset=get4BlopDataset()
+				//var dataset=getCircularDataset()
+				
+				var myNeuralNet=new NeuralNetwork()
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative))
+				myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.5))
+				//myNeuralNet.layers.push(new FeedForwardLayer(6,2, relu, reluDerivative, scale=0.4))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,2, relu, reluDerivative, scale=0.4))
+				//myNeuralNet.layers.push(new AffineLayer(2,1, scale=0.5))
+				//myNeuralNet.layers.push(new FeedForwardLayer(2,1, relu, reluDerivative, scale=0.5))
+				myNeuralNet.layers.push(new LinearLayer(2,1, scale=0.2))
+				//myNeuralNet.layers.push(new AffineLayer(2,2))
+				//myNeuralNet.layers.push(new SoftmaxLayer())
+				//myNeuralNet.layers.push(new ToScalar())
+				myNeuralNet.layers.push(new SigmoidLayer())
+				myNeuralNet.layers.push(new Identity())
+				
+				myNeuralNet.initializeCanvases()
+				gradientDescent(myNeuralNet, dataset, new Loss(), num_steps=1200000, learning_rate=0.01, batch_size=20)
+				
+				drawDataset(ctx, dataset)
+				//console.log(E(dataset), Q(dataset))
+				
+			}
+			
+			
+			
+			
+			
+		</script>
+	</head>
+	<body>
+		<canvas id="myCanvas" width="300" height="300">
+		</canvas>
+	</body>
+</html>
